@@ -5,8 +5,9 @@ import joystick
 import home_screen
 import game_menu
 import display
-import tetris
 import settings
+import tetris
+import battery
 
 buzzer = PWM(Pin(21))
 def beep(duration_ms, freq, volume):
@@ -41,7 +42,6 @@ def update_connected_module():
 
     id_voltage = id_pin.read_u16() * 3.3 / 65535
     new_module = "none"
- 
     for index, mid in enumerate(module_ids):
         if abs(mid - id_voltage) < 0.2:
             new_module = modules[index]
@@ -88,16 +88,20 @@ module_int_pin.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=set_module_
 
 update_connected_module()
 
+
 while True:
     if module_detect:
         update_connected_module()
         
+    if battery.charging_changed:
+        battery.charging_changed = False
+        battery.draw_indicator()
+    battery.periodic_check()
     if current_module == "gaming":
+        
         events = button.button_check()
         joystick_state = joystick.joystick_state()
-        
         held_events = button.button_hold_check(300)
-        
         if home_screen.HOME_OPEN:
             if events:
                 pressed_pins = [pin for pin, is_pressed in events.items() if is_pressed]
@@ -120,35 +124,37 @@ while True:
                 
             if joystick_state != "NONE":
                     game_menu.change_selected(joystick_state)
-        
-        elif tetris.TETRIS_OPEN:
-            
+        elif settings.SETTINGS_OPEN:
             if events:
                 pressed_pins = [pin for pin, is_pressed in events.items() if is_pressed]
                 for btn in pressed_pins:
-                    tetris.proccess_input(btn)
-                    
+                    settings.process_input(btn)
             if held_events:
                 for btn in held_events:
-                    tetris.proccess_input(btn)
+                    settings.process_input(btn)
                 
             if joystick_state != "NONE":
-                    tetris.proccess_input(joystick_state)
-            
-            down_held = ("DOWN" in held_events or joystick_state == "DOWN")
+                    settings.process_input(joystick_state)
+        elif tetris.TETRIS_OPEN:
+            if events:
+                pressed_pins = [pin for pin, is_pressed in events.items() if is_pressed]
+                for btn in pressed_pins:
+                    tetris.process_input(btn)
+            if held_events:
+                for btn in held_events:
+                    tetris.process_input(btn)
                 
-            
+            if joystick_state != "NONE":
+                    tetris.process_input(joystick_state)
+                    
+            down_held = ("DOWN" in held_events) or (joystick_state == "DOWN")
+            if not down_held:
+                tetris.stop_accelerating()
+                        
             if tetris.GAME_STATUS:
-                if (not down_held) and tetris.GRAVITY_ACCELERATED:
-                    tetris.stop_accelerating()
-                elif down_held:
-                    tetris.accelerate_down()
                 tetris.gravity_check()
-            
-            
         
-        
-    utime.sleep_ms(80)
+    utime.sleep_ms(100)
     
     
     
